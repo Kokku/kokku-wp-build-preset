@@ -116,7 +116,7 @@ jobs:
           # exist in this theme is skipped rather than failing the build, so
           # one list serves themes with and without a build, ACF JSON, or
           # style variations.
-          PATHS="acf-json dist lib parts patterns styles templates update
+          PATHS="acf-json dist languages lib parts patterns styles templates update
                  functions.php index.php style.css theme.json screenshot.png"
 
           if [ -n "${{ inputs.extra-paths }}" ]; then

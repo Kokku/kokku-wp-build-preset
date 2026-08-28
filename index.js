@@ -1,24 +1,16 @@
 /**
  * Shared webpack preset for Kokku WordPress themes.
  *
- * A child theme's whole webpack.config.js becomes:
- *
  *     module.exports = require('@kokku/wp-build-preset')(__dirname);
  *
- * so fixing the build for every client is one change here rather than twenty
- * copies drifting apart -- the same failure the Master Theme's 25-flag rsync
- * exclude list demonstrated before it was replaced with an allowlist.
+ * Conventions:
+ *   src/js/main.js  the entry every theme has; it imports the theme's SCSS, so
+ *                   webpack emits dist/main.js AND dist/main.css from it.
+ *   dist/           the only output, and the only thing the parent theme
+ *                   enqueues (kokku_child_asset_path() in the Master Theme).
  *
- * Conventions this assumes, and the reason for each:
- *
- *   src/js/main.js     the entry every theme has. It imports the theme's SCSS,
- *                      so webpack emits dist/main.js AND dist/main.css from it.
- *   dist/              the only output, and the only thing the parent theme
- *                      enqueues (see kokku_child_asset_path() in the Master
- *                      Theme's lib/assets.php).
- *
- * Extra entries are opt-in via the second argument -- the Master Theme uses it
- * for its block bundle and its admin script.
+ * Differences from bare @wordpress/scripts, and the rest of the rationale, are
+ * documented in the Master Theme README under "Build tooling".
  *
  * @param {string} themeDir Absolute path to the theme root -- pass __dirname.
  * @param {Object} [options]

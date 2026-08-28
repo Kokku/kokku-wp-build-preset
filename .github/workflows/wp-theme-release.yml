@@ -1,23 +1,17 @@
-# Reusable release workflow for every Kokku WordPress theme.
+# Reusable release workflow for Kokku WordPress themes.
 #
-# A calling theme's own workflow is eight lines:
+# A calling theme's workflow is eight lines:
 #
-#   on: { push: { tags: ["v*"] } }
-#   permissions: { contents: write }
 #   jobs:
 #     release:
 #       uses: Kokku/kokku-wp-build-preset/.github/workflows/wp-theme-release.yml@v1
 #       with:
-#         slug: mrec-theme
+#         slug: my-child-theme
 #         has-build: false
 #
-# So fixing the pipeline is one pull request, not one per client repo.
-#
-# The ZIP is built from an ALLOWLIST, not an exclude list. The Master Theme's
-# workflow accumulated 25 --exclude flags, each added after something shipped
-# that shouldn't have -- vendor/, 18 unused fonts, a compiled intermediate.
-# A denylist ships every new file by default; an allowlist makes shipping
-# opt-in. Anything a theme needs beyond the defaults goes in extra-paths.
+# The ZIP is built from an ALLOWLIST rather than an exclude list, so anything
+# new in a repo ships only if it is added deliberately. See the Master Theme
+# README for the reasoning; see this repo's README for the inputs.
 
 name: WP Theme Release
 

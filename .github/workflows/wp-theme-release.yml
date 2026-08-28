@@ -1,0 +1,167 @@
+# Reusable release workflow for every Kokku WordPress theme.
+#
+# A calling theme's own workflow is eight lines:
+#
+#   on: { push: { tags: ["v*"] } }
+#   permissions: { contents: write }
+#   jobs:
+#     release:
+#       uses: Kokku/kokku-wp-build-preset/.github/workflows/wp-theme-release.yml@v1
+#       with:
+#         slug: mrec-theme
+#         has-build: false
+#
+# So fixing the pipeline is one pull request, not one per client repo.
+#
+# The ZIP is built from an ALLOWLIST, not an exclude list. The Master Theme's
+# workflow accumulated 25 --exclude flags, each added after something shipped
+# that shouldn't have -- vendor/, 18 unused fonts, a compiled intermediate.
+# A denylist ships every new file by default; an allowlist makes shipping
+# opt-in. Anything a theme needs beyond the defaults goes in extra-paths.
+
+name: WP Theme Release
+
+on:
+  workflow_call:
+    inputs:
+      slug:
+        description: "Theme folder name. Must match the theme directory and the release asset name."
+        required: true
+        type: string
+      has-build:
+        description: "Run npm ci and npm run build. False for themes with no build step (they still get a release ZIP)."
+        required: false
+        default: false
+        type: boolean
+      has-composer:
+        description: "Run composer install --no-dev. Only for themes with real runtime PHP dependencies."
+        required: false
+        default: false
+        type: boolean
+      php-version:
+        description: "PHP version, used only when has-composer is true."
+        required: false
+        default: "8.3"
+        type: string
+      build-outputs:
+        description: "Newline-separated files that must exist after the build, or it fails."
+        required: false
+        default: |
+          dist/main.css
+          dist/main.js
+        type: string
+      extra-paths:
+        description: "Newline-separated extra paths to include in the ZIP, beyond the defaults."
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        if: inputs.has-build
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install Node dependencies
+        if: inputs.has-build
+        run: npm ci
+
+      # @wordpress/scripts shells out to git for version metadata and dies with
+      # a "dubious ownership" fatal unless the workspace is explicitly trusted.
+      - name: Configure Git safe directory
+        if: inputs.has-build
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Build assets
+        if: inputs.has-build
+        run: npm run build
+
+      - name: Verify build outputs
+        if: inputs.has-build
+        run: |
+          while IFS= read -r f; do
+            if [ -n "$f" ]; then
+              if [ ! -f "$f" ]; then
+                echo "::error::Expected build output missing: $f"
+                exit 1
+              fi
+              echo "ok: $f"
+            fi
+          done <<< "${{ inputs.build-outputs }}"
+
+      - name: Setup PHP
+        if: inputs.has-composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer
+
+      - name: Install PHP dependencies
+        if: inputs.has-composer
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Assemble the theme directory
+        run: |
+          set -euo pipefail
+          SLUG="${{ inputs.slug }}"
+          rm -rf "_release/$SLUG"
+          mkdir -p "_release/$SLUG"
+
+          # What a production block theme actually needs. A path that does not
+          # exist in this theme is skipped rather than failing the build, so
+          # one list serves themes with and without a build, ACF JSON, or
+          # style variations.
+          PATHS="acf-json dist lib parts patterns styles templates update
+                 functions.php index.php style.css theme.json screenshot.png"
+
+          if [ -n "${{ inputs.extra-paths }}" ]; then
+            PATHS="$PATHS
+          ${{ inputs.extra-paths }}"
+          fi
+
+          if [ "${{ inputs.has-composer }}" = "true" ]; then
+            PATHS="$PATHS vendor"
+          fi
+
+          for p in $PATHS; do
+            if [ -e "$p" ]; then
+              rsync -a --relative --exclude='.DS_Store' "./$p" "_release/$SLUG/"
+              echo "included: $p"
+            else
+              echo "skipped (absent): $p"
+            fi
+          done
+
+          # A theme without its header is not a theme.
+          if [ ! -f "_release/$SLUG/style.css" ]; then
+            echo "::error::style.css is missing from the assembled theme."
+            exit 1
+          fi
+
+          echo "--- shipping ---"
+          find "_release/$SLUG" -type f | sort
+          echo "--- total ---"
+          du -sh "_release/$SLUG"
+
+      - name: Create ZIP
+        run: |
+          cd _release
+          zip -rq "../${{ inputs.slug }}.zip" "${{ inputs.slug }}"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ inputs.slug }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
